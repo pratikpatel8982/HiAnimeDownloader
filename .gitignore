@@ -1,0 +1,4 @@
+# Ignore Python bytecode directories
+__pycache__/
+# Ignore the backend/plugins directory and its contents
+backend/plugins/
