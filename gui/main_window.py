@@ -16,7 +16,7 @@ from PyQt6.QtNetwork import (
     QNetworkAccessManager, QNetworkRequest, QNetworkReply
 )
 
-from backend.anime_service import AnimeService 
+from downloader.anime_service import AnimeService 
 
 # --- UI Definition and Helpers Import ---
 from .ui_main_window import UiMainWindow
