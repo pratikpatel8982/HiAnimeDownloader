@@ -25,11 +25,6 @@ THEME_DIR = os.path.join(os.path.dirname(__file__), "themes") # Assumes themes/ 
 
 
 class SettingsDialog(QDialog):
-    # Define signals for cross-thread communication if needed
-    # In this case, we'll do the plugin check and download in a thread
-    # and emit a signal to update the UI with the result.
-    plugin_check_finished_signal = pyqtSignal(str, str, str) # status, local_ver, remote_ver
-    plugin_download_finished_signal = pyqtSignal(bool, str, str) # success, message, downloaded_ver
 
     def __init__(self, parent=None, anime_service=None): # Accept anime_service
         super().__init__(parent)
@@ -44,10 +39,6 @@ class SettingsDialog(QDialog):
 
         self._connect_signals()
         self.load_settings()
-
-        # Connect the custom signals
-        self.plugin_check_finished_signal.connect(self._handle_plugin_check_result)
-        self.plugin_download_finished_signal.connect(self._handle_plugin_download_result)
 
     def _populate_app_style_combo(self):
         #qt themes
@@ -75,9 +66,6 @@ class SettingsDialog(QDialog):
         self.ui.recheck_ffmpeg_btn.clicked.connect(self._recheck_ffmpeg)
         self.ui.clear_image_cache_btn.clicked.connect(self._clear_image_cache)
         self.ui.reset_settings_btn.clicked.connect(self._reset_all_settings)
-
-        # Connect the new plugin update button
-        self.ui.check_plugin_update_btn.clicked.connect(self._initiate_plugin_check)
 
         self.ui.button_box.button(QDialogButtonBox.StandardButton.Ok).clicked.connect(self.accept)
         self.ui.button_box.button(QDialogButtonBox.StandardButton.Cancel).clicked.connect(self.reject)
@@ -156,115 +144,6 @@ class SettingsDialog(QDialog):
     def accept(self):
         self.save_settings() # Save before accepting
         super().accept()
-
-# --- PLUGIN UPDATE METHODS ---
-
-    def _initiate_plugin_check(self):
-        """Starts the plugin check in a separate thread."""
-        if not self.anime_service:
-            QMessageBox.critical(self, "Error", "Anime service is not available.")
-            return
-
-        # Disable the button while checking
-        self.ui.check_plugin_update_btn.setEnabled(False)
-        self.ui.check_plugin_update_btn.setText("Checking...")
-
-        # Run the check in a thread to avoid freezing the UI
-        threading.Thread(target=self._execute_plugin_check_task, daemon=True).start()
-
-    def _execute_plugin_check_task(self):
-        """Worker thread task for checking plugin updates."""
-        try:
-            # This returns (status, local_version, remote_version)
-            status, local_version, remote_version = self.anime_service.check_plugin_version()
-            self.plugin_check_finished_signal.emit(status, str(local_version or "N/A"), str(remote_version or "N/A"))
-        except Exception as e:
-            # Emit error status if something unexpected goes wrong in the thread
-            print(f"Error in plugin check thread: {e}") # Log to console for debugging
-            self.plugin_check_finished_signal.emit("error", "N/A", "N/A")
-
-    def _handle_plugin_check_result(self, status: str, local_version: str, remote_version: str):
-        """Handles the result of the plugin check task (runs in GUI thread)."""
-
-        # Re-enable the button
-        self.ui.check_plugin_update_btn.setEnabled(True)
-        self.ui.check_plugin_update_btn.setText("Check for Plugin Updates") # Reset button text
-
-        message_title = "Plugin Update Check"
-        message_text = ""
-        show_download_prompt = False
-
-        if status == "update_available":
-            message_text = f"Plugin update available: {local_version} -> {remote_version}.\n\nDo you want to download the update now?"
-            show_download_prompt = True
-            message_title = "Plugin Update Available"
-        elif status == "up_to_date":
-            message_text = f"Local plugin version {local_version} is up to date."
-        elif status == "local_newer":
-            message_text = f"Local plugin version {local_version} appears newer than remote {remote_version}. No update needed."
-        elif status == "plugin_missing":
-            message_text = f"Plugin not found locally. Remote version {remote_version} is available.\n\nDo you want to download it now?"
-            show_download_prompt = True
-            message_title = "Plugin Missing"
-        elif status == "remote_version_unavailable":
-            message_text = f"Could not determine the remote plugin version. Local version is {local_version}. Check your internet connection or try again later."
-            QMessageBox.warning(self, message_title, message_text)
-            return # Don't show download prompt or further messages
-        elif status == "error":
-            message_text = f"An error occurred during the plugin update check. See console log for details. Local version: {local_version}."
-            QMessageBox.critical(self, message_title, message_text)
-            return # Don't show download prompt or further messages
-        else:
-            message_text = f"Unknown status received during plugin check: {status}. See console log for details."
-            QMessageBox.critical(self, message_title, message_text)
-            return # Don't show download prompt or further messages
-
-        if show_download_prompt:
-             reply = QMessageBox.question(
-                self, message_title,
-                message_text,
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.Yes
-            )
-             if reply == QMessageBox.StandardButton.Yes:
-                self._initiate_plugin_download() # Start download in a thread
-        else:
-             QMessageBox.information(self, message_title, message_text)
-
-    def _initiate_plugin_download(self):
-        """Starts the plugin download in a separate thread."""
-        if not self.anime_service:
-            QMessageBox.critical(self, "Error", "Anime service is not available.")
-            return
-
-        # Disable the button while downloading
-        self.ui.check_plugin_update_btn.setEnabled(False)
-        self.ui.check_plugin_update_btn.setText("Downloading...")
-
-        # Run the download in a thread
-        threading.Thread(target=self._execute_plugin_download_task, daemon=True).start()
-
-    def _execute_plugin_download_task(self):
-        """Worker thread task for downloading plugin updates."""
-        try:
-            # This returns (success, message, downloaded_version)
-            success, message, downloaded_version = self.anime_service.download_plugin()
-            self.plugin_download_finished_signal.emit(success, message, str(downloaded_version or "N/A"))
-        except Exception as e:
-            print(f"Error in plugin download thread: {e}") # Log to console
-            self.plugin_download_finished_signal.emit(False, f"An unexpected error occurred during download: {e}", "N/A")
-
-    def _handle_plugin_download_result(self, success: bool, message: str, downloaded_version: str):
-        """Handles the result of the plugin download task (runs in GUI thread)."""
-
-        # Re-enable the button
-        self.ui.check_plugin_update_btn.setEnabled(True)
-        self.ui.check_plugin_update_btn.setText("Check for Plugin Updates") # Reset button text
-
-        if success:
-            QMessageBox.information(self, "Plugin Download Success", f"{message}")
-        else:
-            QMessageBox.warning(self, "Plugin Download Failed", message)
 
 # --- SLOT METHODS ---
     def _browse_default_download_path(self):

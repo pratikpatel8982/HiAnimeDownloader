@@ -1,12 +1,11 @@
-# main.py (in your project root, e.g., HiAnimeDownloader/main.py)
 import sys
 import os
-# This assumes your controller class AnimeDownloaderWindow is in gui/main_window.py
+
 PROJECT_ROOT = os.path.abspath(os.path.dirname(__file__))
 
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
-# --- END OF MODIFICATION ---
+
 try:
     from gui.main_window import AnimeDownloaderWindow
 except ImportError as e:
@@ -17,14 +16,12 @@ from PyQt6.QtWidgets import QApplication
 from PyQt6.QtWidgets import QApplication, QStyleFactory
 from PyQt6.QtCore import QSettings, QFile, QTextStream, QIODevice # For reading QSS
 
-# ... (QSettings keys, including new ones) ...
 KEY_APP_STYLE = "interface/appStyle"
 KEY_CUSTOM_QSS_THEME = "interface/customQssTheme"
 
 def apply_app_appearance_settings(app: QApplication):
     settings = QSettings()
 
-    # 1. Apply Application Style (Qt Style)
     app_style_name = settings.value(KEY_APP_STYLE, "Default (OS)", type=str)
     if app_style_name != "Default (OS)" and app_style_name in QStyleFactory.keys():
         try:
@@ -37,7 +34,6 @@ def apply_app_appearance_settings(app: QApplication):
     else:
         print(f"[Appearance] Using default OS Qt Style (Requested: {app_style_name}).")
 
-    # 2. Apply Custom QSS Theme (if selected)
     qss_file_path = settings.value(KEY_CUSTOM_QSS_THEME, "", type=str)
     if qss_file_path and os.path.exists(qss_file_path):
         try:

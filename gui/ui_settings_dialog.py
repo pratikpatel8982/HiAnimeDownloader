@@ -1,4 +1,3 @@
-# gui/ui_settings_dialog.py
 from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QTabWidget, QWidget, QLabel,QLineEdit,
     QPushButton, QComboBox, QSpinBox, QDialogButtonBox, QFormLayout
@@ -9,7 +8,7 @@ class Ui_SettingsDialog(object):
     def setupUi(self, SettingsDialogInstance):
         SettingsDialogInstance.setObjectName("SettingsDialogInstance")
         SettingsDialogInstance.setWindowTitle(QCoreApplication.translate("SettingsDialogInstance", "Settings"))
-        SettingsDialogInstance.setMinimumSize(480, 320) # Adjusted minimum size
+        SettingsDialogInstance.setMinimumSize(480, 320)
 
         self.main_layout = QVBoxLayout(SettingsDialogInstance)
 
@@ -36,7 +35,7 @@ class Ui_SettingsDialog(object):
 
         self.default_quality_label = QLabel(QCoreApplication.translate("SettingsDialogInstance", "Default Quality:"))
         self.default_quality_combo = QComboBox()
-        self.default_quality_combo.addItems(["1080p", "720p", "480p", "360p"])
+        self.default_quality_combo.addItems(["1080p", "720p", "360p"])
         general_layout.addRow(self.default_quality_label, self.default_quality_combo)
 
         # --- Downloads Tab ---
@@ -85,8 +84,6 @@ class Ui_SettingsDialog(object):
         self.tab_widget.addTab(self.maintenance_tab, QCoreApplication.translate("SettingsDialogInstance", "Maintenance"))
         maintenance_layout = QVBoxLayout(self.maintenance_tab)
 
-        self.check_plugin_update_btn = QPushButton(QCoreApplication.translate("SettingsDialogInstance", "Check for Plugin Updates"))
-        maintenance_layout.addWidget(self.check_plugin_update_btn)
 
         self.clear_image_cache_btn = QPushButton(QCoreApplication.translate("SettingsDialogInstance", "Clear Image Cache"))
         maintenance_layout.addWidget(self.clear_image_cache_btn)
@@ -113,7 +110,6 @@ class Ui_SettingsDialog(object):
         SettingsDialogInstance.browse_ffmpeg_path_btn = self.browse_ffmpeg_path_btn
         SettingsDialogInstance.recheck_ffmpeg_btn = self.recheck_ffmpeg_btn
         SettingsDialogInstance.download_retries_spinbox = self.download_retries_spinbox
-        SettingsDialogInstance.check_plugin_update_btn = self.check_plugin_update_btn
         SettingsDialogInstance.clear_image_cache_btn = self.clear_image_cache_btn
         SettingsDialogInstance.reset_settings_btn = self.reset_settings_btn
         SettingsDialogInstance.button_box = self.button_box
