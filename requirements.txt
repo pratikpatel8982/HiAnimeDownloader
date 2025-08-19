@@ -1,0 +1,5 @@
+requests>=2.32.4
+pip-system-certs>=5.2
+yt-dlp>=2025.8.11
+PyQt6>=6.9.1,<7.0.0
+yt-dlp-hianime @ https://github.com/pratikpatel8982/yt-dlp-hianime/archive/master.zip
