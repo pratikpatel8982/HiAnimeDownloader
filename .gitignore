@@ -1,2 +1,5 @@
-# Ignore Python bytecode directories
+.venv/
 __pycache__/
+build/
+dist/
+test.py
