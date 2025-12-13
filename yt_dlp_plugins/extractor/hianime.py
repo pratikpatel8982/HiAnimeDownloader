@@ -12,7 +12,7 @@ from yt_dlp.utils import ExtractorError, clean_html, get_element_by_class
 from megacloud import Megacloud
 
 class HiAnimeIE(InfoExtractor):
-    _VALID_URL = r'https?://hianime(?:z)?\.(?:to|is|nz|bz|pe|cx|gs|do)/(?:watch/)?(?P<slug>[^/?]+)(?:-\d+)?-(?P<playlist_id>\d+)(?:\?ep=(?P<episode_id>\d+))?$'
+    _VALID_URL = r'https?://hianime(?:z)?\.(?:to|is|nz|bz|pe|cx|gs|do)/(?:watch/)?(?P<slug>[^/?]+)(?:-\d+)?-(?P<playlist_id>\d+)(?:\?.*)?$'
 
     _TESTS = [
         {
@@ -84,14 +84,19 @@ class HiAnimeIE(InfoExtractor):
     def _real_extract(self, url):
         mobj = self._match_valid_url(url)
         playlist_id = mobj.group('playlist_id')
-        episode_id = mobj.group('episode_id')
         slug = mobj.group('slug')
         self.base_url = re.match(r'https?://[^/]+', url).group(0)
 
+        from urllib.parse import urlparse, parse_qs
+        parsed = urlparse(url)
+        query = parse_qs(parsed.query)
+        episode_id = query.get('ep', [None])[0]
+        lang = query.get('lang', [None])[0]
+
         if episode_id:
-            return self._extract_episode(slug, playlist_id, episode_id)
+            return self._extract_episode(slug, playlist_id, episode_id, lang)
         elif playlist_id:
-            return self._extract_playlist(slug, playlist_id)
+            return self._extract_playlist(slug, playlist_id, lang)
         else:
             raise ExtractorError('Unsupported URL format')
 
@@ -99,7 +104,7 @@ class HiAnimeIE(InfoExtractor):
 
     # ========== Playlist Extraction ========== #
 
-    def _extract_playlist(self, slug, playlist_id):
+    def _extract_playlist(self, slug, playlist_id, lang=None):
         anime_title = self._get_anime_title(slug, playlist_id)
         playlist_url = f'{self.base_url}/ajax/v2/episode/list/{playlist_id}'
         playlist_data = self._download_json(playlist_url, playlist_id, note='Fetching Episode List')
@@ -119,6 +124,8 @@ class HiAnimeIE(InfoExtractor):
             ep_title = clean_html(title.group(1)) if title else None
             ep_number = int(number.group(1)) if number else None
             ep_url = f'{self.base_url}{href.group(1)}' if href else None
+            if ep_url and lang:
+                ep_url = f'{ep_url}&lang={lang}'
 
             self.episode_list[ep_id] = {
                 'title': ep_title,
@@ -137,7 +144,7 @@ class HiAnimeIE(InfoExtractor):
     
     # ========== Episode Extraction ========== #
 
-    def _extract_episode(self, slug, playlist_id, episode_id):
+    def _extract_episode(self, slug, playlist_id, episode_id, lang=None):
         anime_title = self._get_anime_title(slug, playlist_id)
 
         if episode_id not in self.episode_list:
@@ -154,7 +161,8 @@ class HiAnimeIE(InfoExtractor):
         formats = []
         subtitles = {}
 
-        for server_type in ['sub', 'dub', 'raw']:
+        server_types = [lang] if lang and lang in ['sub', 'dub', 'raw'] else ['sub', 'dub', 'raw']
+        for server_type in server_types:
             # 1. Initial element fetching
             server_items_from_func = self._get_elements_by_tag_and_attrib(
                 servers_data['html'], tag='div', attribute='data-type', value=server_type, escape_value=False
@@ -165,7 +173,6 @@ class HiAnimeIE(InfoExtractor):
             
             # 3. Try multiple mirrors
             mirror_names = ["HD-1", "HD-2", "HD-3"]
-            success = False
             for mirror in mirror_names:
                 target_link_text = mirror
                 server_id = next(
@@ -220,14 +227,10 @@ class HiAnimeIE(InfoExtractor):
                                 'name': label,
                                 'url': file_url,
                             })
-                    success = True
-                    break
                 except Exception as e:
                     self.to_screen(f'Failed to extract from {mirror} for {server_type}: {e}, trying next mirror after 10 seconds')
                     time.sleep(10)
                     continue
-            if not success:
-                self.to_screen(f'No mirrors succeeded for {server_type}')
         return {
             'id': episode_id,
             'title': episode_data['title'],
@@ -249,8 +252,8 @@ class HiAnimeIE(InfoExtractor):
         )
         for f in formats:
             height = f.get('height')
-            f['format_id'] = f'{server_type}_{height}p'
-            f['language'] = self.language[server_type]
+            f['format_id'] = f'{height}p' if height else 'source'
+            f['language'] = self.language.get(server_type, 'en') if server_type else 'en'
             f['http_headers'] = headers
         return formats
 

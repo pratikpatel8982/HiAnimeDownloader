@@ -12,9 +12,9 @@ class UiMainWindow(object):
 
         # --- Search Area ---
         search_hbox = QHBoxLayout()
-        MainWindow_instance.search_input = QLineEdit() # No parent in constructor, added to layout
+        MainWindow_instance.search_input = QComboBox() # Changed to QComboBox for search history
+        MainWindow_instance.search_input.setEditable(True)
         # Placeholder text will be set in retranslateUi
-        MainWindow_instance.search_input.setClearButtonEnabled(True)
         search_hbox.addWidget(MainWindow_instance.search_input)
         MainWindow_instance.search_btn = QPushButton() # Text set in retranslateUi
         search_hbox.addWidget(MainWindow_instance.search_btn)
@@ -97,6 +97,8 @@ class UiMainWindow(object):
         dir_selection_layout.addWidget(MainWindow_instance.download_path_edit, 1) # Stretch
         MainWindow_instance.browse_path_btn = QPushButton() # Text set in retranslateUi
         dir_selection_layout.addWidget(MainWindow_instance.browse_path_btn)
+        MainWindow_instance.view_folder_btn = QPushButton() # Text set in retranslateUi
+        dir_selection_layout.addWidget(MainWindow_instance.view_folder_btn)
         MainWindow_instance.main_layout.addLayout(dir_selection_layout)
 
         # --- Progress Area ---
@@ -147,7 +149,7 @@ class UiMainWindow(object):
         MainWindow_instance.setWindowTitle(_translate("AnimeDownloaderWindow", "HiAnime Downloader"))
         
         # Search Area
-        MainWindow_instance.search_input.setPlaceholderText(_translate("AnimeDownloaderWindow", "Enter anime name to search..."))
+        MainWindow_instance.search_input.setPlaceholderText(_translate("AnimeDownloaderWindow", "Enter anime name or select from download history..."))
         MainWindow_instance.search_btn.setText(_translate("AnimeDownloaderWindow", "Search"))
 
         # Filter Input
@@ -172,6 +174,7 @@ class UiMainWindow(object):
         MainWindow_instance.download_dir_label.setText(_translate("AnimeDownloaderWindow", "Download Directory:"))
         MainWindow_instance.download_path_edit.setPlaceholderText(_translate("AnimeDownloaderWindow", "Click 'Browse' to select..."))
         MainWindow_instance.browse_path_btn.setText(_translate("AnimeDownloaderWindow", "Browse..."))
+        MainWindow_instance.view_folder_btn.setText(_translate("AnimeDownloaderWindow", "View Folder"))
 
         # Progress Area (initial static text if any - mostly dynamic)
         MainWindow_instance.current_episode_title_label.setText(_translate("AnimeDownloaderWindow", "Current file: N/A"))

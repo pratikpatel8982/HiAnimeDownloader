@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="screenshots/screenshot.png" alt="Screenshot of HiAnimeDownloader GUI">
+</p>
+
 ## HiAnimeDownloader
 
 A GUI application to search and download anime from HiAnime.
