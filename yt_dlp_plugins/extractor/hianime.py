@@ -72,6 +72,7 @@ class HiAnimeIE(InfoExtractor):
             'Arabic': 'ar',
             'English Dubbed': 'en-IN',
             'English Subbed': 'en',
+            'English Rawbed': 'en',
             'French - Francais(France)': 'fr',
             'German - Deutsch': 'de',
             'Italian - Italiano': 'it',
