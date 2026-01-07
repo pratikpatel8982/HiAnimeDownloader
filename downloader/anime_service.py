@@ -4,7 +4,8 @@ import requests
 import pip_system_certs
 import re
 import shutil
-
+import time
+from PyQt6.QtCore import QObject, pyqtSignal
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import clean_html, get_element_by_class, get_elements_html_by_class
 from yt_dlp_plugins.extractor import hianime
@@ -37,9 +38,15 @@ class Logger:
         """
         Helper to consistently format and print log messages to the console.
         """
-        # Use a consistent format for console output, including the context name.
-        print(f"[{self.context_name} {level_str.upper()}] {msg}",
-              file=sys.stderr if level_str.upper() in ["ERROR", "WARNING"] else sys.stdout)
+        # Handle Unicode encoding issues on Windows
+        try:
+            print(f"[{self.context_name} {level_str.upper()}] {msg}",
+                  file=sys.stderr if level_str.upper() in ["ERROR", "WARNING"] else sys.stdout)
+        except UnicodeEncodeError:
+            # Replace problematic characters
+            safe_msg = msg.encode('utf-8', 'replace').decode('utf-8')
+            print(f"[{self.context_name} {level_str.upper()}] {safe_msg}",
+                  file=sys.stderr if level_str.upper() in ["ERROR", "WARNING"] else sys.stdout)
 
     def debug(self, msg):
         """
@@ -98,8 +105,11 @@ class Logger:
         if self.gui_callback_fn:
             self.gui_callback_fn(gui_msg)
 
-class AnimeService:
+class AnimeService(QObject):
+    download_completed_signal = pyqtSignal(str)  # Emits the anime title when download completes
+
     def __init__(self, base_url=None):
+        super().__init__()
         self.base_url = base_url if base_url else DEFAULT_BASE_URL
         self._service_logger = Logger()
 
@@ -228,6 +238,7 @@ class AnimeService:
         """
         
         ytdlp_logger = Logger(gui_logger_callback, context_name="yt-dlp")
+        ytdlp_logger.log_debug_to_gui = True  # Enable debug messages to GUI
         ytdlp_logger.log_debug_to_gui = log_ytdlp_debug_to_gui
 
         if not hianime:
@@ -258,7 +269,14 @@ class AnimeService:
             return
 
         output_template = os.path.join(series_dir, '%(series)s - Episode %(episode_number)s - %(episode)s.%(ext)s')
-        plugin_custom_format = f"{lang.lower()}_{quality.lower()}"
+        qualities = ['1080p', '720p', '480p', '360p', '240p', '144p']
+        selected_quality = quality.lower()
+        if selected_quality in qualities:
+            index = qualities.index(selected_quality)
+            fallback_qualities = qualities[index:] + ['best']
+            plugin_custom_format = '/'.join(fallback_qualities)
+        else:
+            plugin_custom_format = 'best'
 
         opts = {
             "playliststart": start_ep,
@@ -280,7 +298,11 @@ class AnimeService:
             "continuedl": True, # Consider making this configurable
             "retries": download_retries,             # Using parameter from settings
             "fragment_retries": download_retries,    # Using parameter from settings
-            "ffmpeg_location": ffmpeg_location   # Using parameter from settings (already None or valid path)
+            "ffmpeg_location": ffmpeg_location,   # Using parameter from settings (already None or valid path)
+            "nocheckcertificate": True,  # Bypass SSL certificate verification to handle SSL issues
+            "http_headers": {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
+            }
         }
 
         # --- FFmpeg Path and Warning Logic ---
@@ -307,11 +329,43 @@ class AnimeService:
             f"FFmpeg path for this operation: {'Auto-detect by yt-dlp' if not opts.get('ffmpeg_location') else opts.get('ffmpeg_location')}"
         )
 
-        try:
-            with YoutubeDL(opts) as ydl:
-                ydl.extract_info(url, download=True)
-            ytdlp_logger.info(f"Download process for {title} (yt-dlp phase) finished.")
-        except Exception as e:
-            ytdlp_logger.error(f"Download of '{title}' failed: {type(e).__name__} - {e}")
-            # import traceback
-            # ytdlp_logger.debug(f"Traceback: {traceback.format_exc()}") 
+        # Add lang to url
+        url = f"{url}&lang={lang.lower()}" if '?' in url else f"{url}?lang={lang.lower()}"
+
+        qualities = ['1080p', '720p', '480p', '360p', '240p', '144p']
+        selected_quality = quality.lower()
+        plugin_custom_format = selected_quality
+
+        max_retries = 10
+        for attempt in range(max_retries):
+            try:
+                with YoutubeDL(opts) as ydl:
+                    ydl.extract_info(url, download=True)
+                ytdlp_logger.info(f"Download process for {title} (yt-dlp phase) finished.")
+                self.download_completed_signal.emit(title)  # Emit signal for download history
+                break  # Success, exit loop
+            except Exception as e:
+                error_msg = str(e)
+                if "Requested format is not available" in error_msg:
+                    if attempt < max_retries - 1:
+                        ytdlp_logger.warning(f"Attempt {attempt + 1} failed: Selected quality '{selected_quality}' not available. Retrying in 10 seconds...")
+                        time.sleep(10)
+                        continue
+                    else:
+                        # After 10 attempts, fallback
+                        ytdlp_logger.warning(f"Selected quality '{selected_quality}' not available after {max_retries} attempts, trying fallback qualities.")
+                        if selected_quality in qualities:
+                            index = qualities.index(selected_quality)
+                            fallback_qualities = qualities[index + 1:] + ['best']  # Skip the selected, start from next
+                            fallback_format = '/'.join(fallback_qualities)
+                            opts['format'] = fallback_format
+                            ytdlp_logger.info(f"Retrying with fallback format: {fallback_format}")
+                            with YoutubeDL(opts) as ydl:
+                                ydl.extract_info(url, download=True)
+                            ytdlp_logger.info(f"Download process for {title} (yt-dlp phase) finished with fallback.")
+                            self.download_completed_signal.emit(title)
+                        else:
+                            raise
+                else:
+                    # For other errors, fail immediately
+                    raise 

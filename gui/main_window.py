@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem, QLabel, QMenu
 )
 from PyQt6.QtGui import (
-    QTextCursor, QAction, QDesktopServices, QPixmap, QPixmapCache
+    QTextCursor, QAction, QDesktopServices, QPixmap, QPixmapCache, QColor, QPalette
 )
 from PyQt6.QtCore import (
     pyqtSignal, Qt, QSettings, QStandardPaths, QUrl, QSize, QByteArray,QSignalBlocker
@@ -48,6 +48,9 @@ class AnimeDownloaderWindow(QWidget):
         self.anime_service = AnimeService()      # Step 2: Initialize backend service
 
         self.anime_service.set_gui_logger_callback(self.output_signal.emit, log_debug_to_gui=False)
+
+        # Connect download completed signal to add to history
+        self.anime_service.download_completed_signal.connect(self._add_to_download_history)
 
         # Step 3: Setup the UI using the UiMainWindow class
         # The UiMainWindow class will create widgets and assign them as attributes to 'self'
@@ -197,7 +200,7 @@ class AnimeDownloaderWindow(QWidget):
     def _connect_all_signals(self):
         """Connect signals from UI elements (setup by UiMainWindow) to methods in this class."""
         # Search
-        self.search_input.returnPressed.connect(self.handle_search_action)
+        self.search_input.lineEdit().returnPressed.connect(self.handle_search_action)
         self.search_btn.clicked.connect(self.handle_search_action)
         
         # Filter
@@ -215,6 +218,7 @@ class AnimeDownloaderWindow(QWidget):
 
         # Directory
         self.browse_path_btn.clicked.connect(self.handle_browse_directory_action)
+        self.view_folder_btn.clicked.connect(self.handle_view_folder_action)
         # If download_path_edit were editable:
         self.download_path_edit.textChanged.connect(self.handle_setting_changed_and_save)
 
@@ -280,6 +284,7 @@ class AnimeDownloaderWindow(QWidget):
         saved_path = self.settings.value("last_download_path", default_path, type=str)
         with QSignalBlocker(self.download_path_edit): # Use direct access: self.download_path_edit
             self.download_path_edit.setText(saved_path)
+        self._update_view_folder_button_state()
 
         # Log Visibility - NO QSignalBlocker needed here because setVisible and setText
         # for these specific widgets do not trigger the signals that call _save_settings.
@@ -287,6 +292,11 @@ class AnimeDownloaderWindow(QWidget):
         # due to signals from lang_combo etc.
         log_is_visible = self.settings.value("log_visible", True, type=bool)
         self._update_log_ui_state(log_is_visible) # Call the helper method
+
+        # Search History -> Download History
+        download_history = self.settings.value("download_history", [], type=list)
+        self.search_input.clear()
+        self.search_input.addItems(download_history)
 
     def _save_settings(self):
         """Save current UI settings to QSettings."""
@@ -355,13 +365,29 @@ class AnimeDownloaderWindow(QWidget):
             self.batch_progress_bar.hide()
 
     def append_log_message(self, text: str):
-        # Use the helper function for stripping ANSI codes if text might contain them
-        # cleaned_text = strip_ansi_codes(text) # from .helpers
-        self.output_box.append(text) # Assume text is already clean or stripping happens earlier
+        # Determine if dark mode based on window background lightness
+        is_dark = self.palette().color(QPalette.ColorRole.Window).lightness() < 128
+        
+        # Determine color based on message content and theme
+        if "[ERROR]" in text or "ERROR" in text:
+            color = QColor("red")
+        elif "[WARNING]" in text or "WARNING" in text:
+            color = QColor("yellow") if is_dark else QColor("orange")
+        elif "[yt-dlp DEBUG]" in text:
+            color = QColor("lightgray")
+        elif "[INFO]" in text or "INFO" in text:
+            color = QColor("cyan") if is_dark else QColor("blue")
+        else:
+            color = QColor("white") if is_dark else QColor("black")
+        
+        # Set color and append
+        self.output_box.setTextColor(color)
+        self.output_box.append(text)
+        self.output_box.setTextColor(QColor("white") if is_dark else QColor("black"))  # Reset
         self.output_box.moveCursor(QTextCursor.MoveOperation.End)
 
     def handle_search_action(self): # Was search()
-        anime_name = self.search_input.text().strip()
+        anime_name = self.search_input.currentText().strip()  # Changed to currentText() for QComboBox
         if not anime_name:
             QMessageBox.warning(self, "Search Error", "Please enter an anime name.")
             return
@@ -552,6 +578,17 @@ class AnimeDownloaderWindow(QWidget):
             self.download_path_edit.setText(directory)
             self.output_signal.emit(f"Download directory set to: {directory}")
             self._save_settings() # Save setting immediately
+            self._update_view_folder_button_state()
+
+    def handle_view_folder_action(self):
+        download_dir = self.download_path_edit.text()
+        if not (download_dir and os.path.isdir(os.path.abspath(download_dir))):
+            QMessageBox.warning(self, "Directory Error", "Please select a valid download directory first.")
+            return
+        try:
+            os.startfile(download_dir)
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Could not open folder: {e}")
 
     def handle_download_action(self): # Was download_selected_anime
         if not self.selected_anime_data:
@@ -667,6 +704,9 @@ class AnimeDownloaderWindow(QWidget):
                 self.output_signal.emit(
                     f"DL '{base_filename_current_op}': {percent_str_for_log} @ {speed_str_for_log} (ETA: {eta_str_for_log}s)"
                 )
+                # Add detailed progress message like yt-dlp
+                total_bytes_str = strip_ansi_codes(d.get('_total_bytes_str', 'Unknown').strip())
+                self.output_signal.emit(f"[download] {percent_str_for_log} of {total_bytes_str} at {speed_str_for_log} ETA {eta_str_for_log}")
 
             if is_current_op_video:
                 if self.current_tracking_video_file != base_filename_current_op: # New video file started
@@ -681,12 +721,14 @@ class AnimeDownloaderWindow(QWidget):
                     
                     display_title = f"Episode {ep_num_str} - {ep_title_str}" if ep_num_str else ep_title_str
                     self.update_episode_title_signal.emit(f"Downloading: {display_title}")
+                    self.output_signal.emit(f"Title set to: Downloading: {display_title}")
                 
                 try: # Update progress bar for current video
                     current_pct_float = float(percent_str_for_log.replace('%', ''))
                     if current_pct_float >= self.current_episode_last_pct: # Ensure progress moves forward
                         self.current_episode_last_pct = current_pct_float
                         self.update_episode_progress_signal.emit(int(current_pct_float))
+                        self.output_signal.emit(f"Progress updated to: {int(current_pct_float)}%")
                 except ValueError: pass # Ignore if percent string cannot be converted
 
         elif status == 'finished':
@@ -734,6 +776,29 @@ class AnimeDownloaderWindow(QWidget):
         """Updates the output log's visibility and the toggle button's text."""
         self.output_box.setVisible(is_visible)
         self.toggle_log_btn.setText("Hide Output Log" if is_visible else "Show Output Log")
+
+    def _update_view_folder_button_state(self):
+        """Updates the view folder button's enabled state based on whether the download path is valid."""
+        download_dir = self.download_path_edit.text()
+        is_valid = download_dir and os.path.isdir(os.path.abspath(download_dir))
+        self.view_folder_btn.setEnabled(is_valid)
+
+    def _add_to_download_history(self, title: str):
+        """Adds a downloaded anime title to the history, avoiding duplicates and limiting to 10 items."""
+        if not title:
+            return
+        # Get current history
+        history = [self.search_input.itemText(i) for i in range(self.search_input.count())]
+        if title in history:
+            history.remove(title)
+        history.insert(0, title)
+        # Limit to 10
+        history = history[:10]
+        # Update combo box
+        self.search_input.clear()
+        self.search_input.addItems(history)
+        # Save to settings
+        self.settings.setValue("download_history", history)
 
     def handle_toggle_log_visibility(self): # Was toggle_output_log_visibility
         is_visible = not self.output_box.isVisible()

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="screenshots/screenshot.png" alt="Screenshot of HiAnimeDownloader GUI">
+</p>
+
 ## HiAnimeDownloader
 
 A GUI application to search and download anime from HiAnime.
@@ -9,6 +13,7 @@ This project is a desktop application designed to make it easy to find and downl
 * **GUI Interface:** User-friendly interface built with PyQt6.
 * **Dependency Management:** Seamlessly handles external download libraries like yt-dlp.
 * **Customizable Downloads:** Specify resolution and language for your downloads.
+* **Reliable Downloads:** Automatic mirror fallback (HD-1 to HD-3) with delays to avoid bot detection, and support for sequential episode downloads.
 
 ***
 
